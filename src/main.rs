@@ -4,7 +4,11 @@ use std::net::{TcpListener, TcpStream};
 use std::io::prelude::*;
 use std::fs::File;
 use std::collections::HashMap;
+
 use std::thread;
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use regex::Regex;
 
@@ -23,6 +27,8 @@ enum HttpResult {
 
 use HttpResult::*;
 
+type Job = Box<FnBox + Send + 'static>;
+
 struct Worker {
     id: usize,
     thread: Option<thread::JoinHandle<()>>
@@ -34,12 +40,6 @@ enum Message {
 }
 
 use Message::*;
-
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::Mutex;
-
-type Job = Box<FnBox + Send + 'static>;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
