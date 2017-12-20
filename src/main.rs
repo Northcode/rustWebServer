@@ -3,7 +3,6 @@ extern crate regex;
 use std::net::{TcpListener, TcpStream};
 use std::io::prelude::*;
 use std::fs::File;
-use std::collections::HashMap;
 
 use std::thread;
 use std::sync::mpsc;
@@ -17,6 +16,11 @@ use RouteAction::*;
 enum RouteAction {
     Open(String),
     None
+}
+
+struct Route {
+    pattern: Regex,
+    action: RouteAction
 }
 
 enum HttpResult {
@@ -124,7 +128,7 @@ impl Worker {
 
 fn main() {
 
-    let mut routes = HashMap::new();
+    let mut routes = vec!();
 
     let mut route_file = File::open("routes.txt").expect("Failed to open routes.txt file!");
 
@@ -137,7 +141,8 @@ fn main() {
     for capture in route_p.captures_iter(route_file_contents.as_ref()) {
         // println!("Route: {}, Type: {}, Arg: {}", &capture["route"], &capture["type"], &capture["arg"]);
 
-        let route = String::from(&capture["route"]);
+        let route = Regex::new(&capture["route"]).expect(String::from(format!("Failed to build regex for route '{}', cannot start!", &capture["route"])).as_ref());
+
         let typ = &capture["type"];
         let arg = &capture["arg"];
 
@@ -146,7 +151,7 @@ fn main() {
             &_ => None
         };
 
-        routes.insert(route, routeaction);
+        routes.push(Route { pattern: route, action: routeaction });
     }
     
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
@@ -191,7 +196,16 @@ fn render_result(result: HttpResult) -> String {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, routes: &HashMap<String, RouteAction>) {
+fn match_route<'a>(route_to_match: &str, routes: &'a Vec<Route>) -> Option<&'a Route> {
+    for route in routes {
+        if route.pattern.is_match(route_to_match) {
+            return Some(route)
+        }
+    }
+    return Option::None
+}
+
+fn handle_connection(mut stream: TcpStream, routes: &Vec<Route>) {
 
     let get_p = Regex::new(r"^GET (?P<route>[/a-zA-Z0-9.]+) HTTP/1\.1.*").unwrap();
 
@@ -203,14 +217,21 @@ fn handle_connection(mut stream: TcpStream, routes: &HashMap<String, RouteAction
     println!("Request {}", &request);
 
     for cap in get_p.captures_iter(&request) {
-        let route = &cap["route"];
+        let route_to_get = &cap["route"];
         
-        let routeaction = routes.get(route);
+        let route = match_route(route_to_get, &routes);
 
-        let response = match routeaction {
-            Some(&Open(ref path)) => serve_file(path.as_ref()),
-            Some(&None) => panic!("I don't know what to do with this route!!!"),
-            Option::None => HttpNotFound(format!("Route at {}, not found!", &route))
+        let response = match route {
+            Some(route) => {
+                match route.action {
+                    Open(ref path) => {
+                        println!("Found match for route {} serving file {}", &route.pattern, path);
+                        serve_file(path.as_ref())
+                    },
+                    None => panic!("I don't know what to do with this route!!!"),
+                }
+            },
+            Option::None => HttpNotFound(format!("Route at {}, not found!", &route_to_get))
         };
 
         let _response = render_result(response);

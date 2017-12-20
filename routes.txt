@@ -1,2 +1,2 @@
-"/" : open "html/index.html"
-"/test" : open "html/about.html"
+"^/$" : open "html/index.html"
+"^/test$" : open "html/about.html"
