@@ -153,7 +153,7 @@ fn main() {
 
     let pool = ThreadPool::new(4);
 
-    let routes = Arc::new(Mutex::new(routes));
+    let routes = Arc::new(routes);
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -161,8 +161,6 @@ fn main() {
         let routes = Arc::clone(&routes);
 
         pool.execute(move || {
-            let routes = routes.lock().unwrap();
-            
             handle_connection(stream, &routes);
         });
         println!("Connection established!");
