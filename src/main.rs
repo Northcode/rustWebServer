@@ -196,13 +196,13 @@ fn render_result(result: HttpResult) -> String {
     }
 }
 
-fn match_route<'a>(route_to_match: &str, routes: &'a Vec<Route>) -> Option<&'a Route> {
+fn match_route<'a,'b>(route_to_match: &'b str, routes: &'a Vec<Route>) -> (Option<&'a Route>, Option<regex::Captures<'b>>){
     for route in routes {
         if route.pattern.is_match(route_to_match) {
-            return Some(route)
+            return (Some(route),route.pattern.captures(route_to_match));
         }
     }
-    return Option::None
+    return (Option::None,Option::None);
 }
 
 fn handle_connection(mut stream: TcpStream, routes: &Vec<Route>) {
@@ -218,15 +218,32 @@ fn handle_connection(mut stream: TcpStream, routes: &Vec<Route>) {
 
     for cap in get_p.captures_iter(&request) {
         let route_to_get = &cap["route"];
-        
-        let route = match_route(route_to_get, &routes);
+
+        let (route,captures) = match_route(route_to_get, &routes);
 
         let response = match route {
             Some(route) => {
                 match route.action {
                     Open(ref path) => {
                         println!("Found match for route {} serving file {}", &route.pattern, path);
-                        serve_file(path.as_ref())
+                        // if let Some(caps) = captures {
+                        //     for cap in caps.iter().enumerate().skip(1) {
+                        //         if let (idx, Some(cap)) = cap {
+                        //             println!("found thing: {} at {}", cap.as_str(), idx);
+                        //             let pat : String = String::from(format!("${}", idx));
+                        //             newpath = newpath.replace(pat.as_str(), cap.as_str());
+                        //         }
+                        //     }
+                        // }
+
+                        let newpath = captures
+                            .unwrap()
+                            .iter()
+                            .enumerate()
+                            .skip(1)
+                            .fold(path.clone(), |totpath, (idx, item)| { totpath.replace(format!("${}", idx).as_str(), item.unwrap().as_str()) });
+
+                        serve_file(newpath.as_ref())
                     },
                     None => panic!("I don't know what to do with this route!!!"),
                 }

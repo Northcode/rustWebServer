@@ -1,2 +1,3 @@
 "^/$" : open "html/index.html"
 "^/test$" : open "html/about.html"
+"^/test(\d+)$" : open "html/test_file_$1.html"
