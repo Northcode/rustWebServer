@@ -9,12 +9,15 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use std::process::Command;
+
 use regex::Regex;
 
 use RouteAction::*;
 
 enum RouteAction {
     Open(String),
+    Exec(String),
     None
 }
 
@@ -107,7 +110,6 @@ impl Worker {
             loop {
                 let message = receiver.lock().unwrap().recv().unwrap();
 
-
                 match message {
                     NewJob(job) => {
                         println!("Got job for worker {}, executing...", id);
@@ -148,6 +150,7 @@ fn main() {
 
         let routeaction : RouteAction = match typ {
             "open" => Open(String::from(arg)),
+            "exec" => Exec(String::from(arg)),
             &_ => None
         };
 
@@ -205,6 +208,14 @@ fn match_route<'a,'b>(route_to_match: &'b str, routes: &'a Vec<Route>) -> (Optio
     return (Option::None,Option::None);
 }
 
+fn replace_captures<T : Into<String>>(input: T, captures: &regex::Captures) -> String {
+    captures
+        .iter()
+        .enumerate()
+        .skip(1)
+        .fold(input.into(), |totpath, (idx, item)| { totpath.replace(format!("${}", idx).as_str(), item.unwrap().as_str()) })
+}
+
 fn handle_connection(mut stream: TcpStream, routes: &Vec<Route>) {
 
     let get_p = Regex::new(r"^GET (?P<route>[/a-zA-Z0-9.]+) HTTP/1\.1.*").unwrap();
@@ -226,24 +237,23 @@ fn handle_connection(mut stream: TcpStream, routes: &Vec<Route>) {
                 match route.action {
                     Open(ref path) => {
                         println!("Found match for route {} serving file {}", &route.pattern, path);
-                        // if let Some(caps) = captures {
-                        //     for cap in caps.iter().enumerate().skip(1) {
-                        //         if let (idx, Some(cap)) = cap {
-                        //             println!("found thing: {} at {}", cap.as_str(), idx);
-                        //             let pat : String = String::from(format!("${}", idx));
-                        //             newpath = newpath.replace(pat.as_str(), cap.as_str());
-                        //         }
-                        //     }
-                        // }
 
-                        let newpath = captures
-                            .unwrap()
-                            .iter()
-                            .enumerate()
-                            .skip(1)
-                            .fold(path.clone(), |totpath, (idx, item)| { totpath.replace(format!("${}", idx).as_str(), item.unwrap().as_str()) });
+                        let newpath = replace_captures(path.clone(), &captures.unwrap());
 
                         serve_file(newpath.as_ref())
+                    },
+                    Exec(ref cmd) => {
+                        let newcmd = replace_captures(cmd.clone(), &captures.unwrap());
+
+                        println!("Found match for route {} execing command {}", &route.pattern, newcmd);
+
+                        let outp = Command::new("sh")
+                            .arg("-c")
+                            .arg(newcmd)
+                            .output()
+                            .expect("failed to execute process");
+
+                        HttpOk(String::from_utf8_lossy(&outp.stdout).into())
                     },
                     None => panic!("I don't know what to do with this route!!!"),
                 }
