@@ -1,4 +1,4 @@
 "^/$" : open "html/index.html"
 "^/test$" : open "html/about.html"
 "^/test(\d+)$" : open "html/test_file_$1.html"
-"^/do(\w+)$" : exec "ls"
+"^/list([a-zA-Z0-9.]+)$" : exec "ls $1"
